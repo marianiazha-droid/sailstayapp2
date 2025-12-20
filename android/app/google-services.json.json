@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "564177947022",
+    "project_id": "sailstayapp2",
+    "storage_bucket": "sailstayapp2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:564177947022:android:44c23df7a8bb270d0ebcdf",
+        "android_client_info": {
+          "package_name": "com.example.sailstayapp2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDaPBfU-s4Oz15ieSXCGYkOtNM0Of8fXYU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
