@@ -83,4 +83,5 @@ class DefaultFirebaseOptions {
     authDomain: 'sailstayapp2.firebaseapp.com',
     storageBucket: 'sailstayapp2.firebasestorage.app',
   );
+
 }
