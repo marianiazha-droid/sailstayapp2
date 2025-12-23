@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:sailstayapp2/screens/homescreen.dart'; // Ensure this path is correct
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:sailstayapp2/screens/homescreen.dart'; 
 
 class PaymentScreen extends StatefulWidget {
   final Map<String, dynamic> bookingData;
@@ -24,6 +25,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Parsing price from the bookingData map passed from previous screen
     double totalAmount =
         double.tryParse(widget.bookingData['price'].toString()) ?? 0.0;
 
@@ -79,10 +81,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     children: [
                       const Text(
                         "Status",
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 14,
-                        ),
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
                       ),
                       Text(
                         "Pending Payment",
@@ -109,35 +108,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ),
             const SizedBox(height: 16),
 
-            // --- METHOD SELECTOR ---
-            _buildMethodOption(
-              0,
-              icon: Icons.credit_card,
-              title: "Credit / Debit Card",
-            ),
-
+            _buildMethodOption(0, icon: Icons.credit_card, title: "Credit / Debit Card"),
             _buildMethodOption(
               1,
-              customLogo: Image.asset(
-                'assets/images/tnglogo.jpg',
-                height: 25,
-                width: 25,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => 
-                    Icon(Icons.account_balance_wallet, color: navyBlue, size: 20),
-              ),
+              customLogo: const Icon(Icons.account_balance_wallet, color: Color(0xFF0C004B), size: 20), 
               title: "Touch 'n Go eWallet",
             ),
-
-            _buildMethodOption(
-              2,
-              icon: Icons.account_balance,
-              title: "Online Banking (FPX)",
-            ),
+            _buildMethodOption(2, icon: Icons.account_balance, title: "Online Banking (FPX)"),
 
             const SizedBox(height: 24),
 
-            // --- DYNAMIC CONTENT ---
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
               child: _selectedMethod == 0
@@ -149,23 +129,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
             const SizedBox(height: 40),
 
-            // --- PAY BUTTON ---
             ElevatedButton(
               onPressed: () => _handlePaymentProcess(totalAmount),
               style: ElevatedButton.styleFrom(
                 backgroundColor: navyBlue,
                 minimumSize: const Size(double.infinity, 60),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
               ),
               child: const Text(
                 "Confirm & Pay",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
               ),
             ),
           ],
@@ -174,12 +147,103 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  Widget _buildMethodOption(
-    int index, {
-    IconData? icon,
-    Widget? customLogo,
-    required String title,
-  }) {
+  // --- LOGIC: THE FIX FOR CHOICE B ---
+  Future<void> _handlePaymentProcess(double finalTotal) async {
+    // 1. Get the current logged-in user
+    final User? user = FirebaseAuth.instance.currentUser;
+
+    // 2. If no user, stop and show error
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Authentication Error: Please login again.")),
+      );
+      return;
+    }
+
+    // 3. Show loading spinner
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      // 4. SAVE TO FIRESTORE
+      await FirebaseFirestore.instance.collection('Bookings').add({
+        // This spreads all data from previous screens (islandName, price, roomImage, etc.)
+        ...widget.bookingData, 
+        
+        // --- CRITICAL FIELDS FOR FILTERING ---
+        'userId': user.uid,        // The UID from your Authentication screenshot
+        'userEmail': user.email,    
+        'totalAmount': finalTotal, 
+        'paymentMethod': _selectedMethod == 0 ? "Card" : _selectedMethod == 1 ? "TNG" : "FPX",
+        'status': 'Paid & Confirmed',
+        'createdAt': FieldValue.serverTimestamp(), // Used to sort your My Bookings list
+      });
+
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading spinner
+
+      _showSuccessDialog();
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading spinner
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Database Error: $e")),
+      );
+    }
+  }
+
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle_rounded, color: turquoise, size: 70),
+            const SizedBox(height: 20),
+            const Text(
+              "Payment Successful!",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              "Your booking is confirmed. Check the 'Booking' tab to see it.",
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () {
+                // Navigate back to Home and clear navigation history
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (context) => const HomeScreen()),
+                  (route) => false,
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: navyBlue,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
+              ),
+              child: const Text(
+                "Back to Home",
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- UI HELPER WIDGETS ---
+
+  Widget _buildMethodOption(int index, {IconData? icon, Widget? customLogo, required String title}) {
     bool isSelected = _selectedMethod == index;
     return GestureDetector(
       onTap: () => setState(() => _selectedMethod = index),
@@ -189,25 +253,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
         decoration: BoxDecoration(
           color: isSelected ? lightPurple : Colors.white,
           borderRadius: BorderRadius.circular(15),
-          border: Border.all(
-            color: isSelected ? turquoise : Colors.grey[200]!,
-            width: 2,
-          ),
+          border: Border.all(color: isSelected ? turquoise : Colors.grey[200]!, width: 2),
         ),
         child: Row(
           children: [
-            if (customLogo != null)
-              customLogo
-            else
-              Icon(icon, color: isSelected ? navyBlue : Colors.grey),
+            if (customLogo != null) customLogo else Icon(icon, color: isSelected ? navyBlue : Colors.grey),
             const SizedBox(width: 16),
-            Text(
-              title,
-              style: TextStyle(
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: navyBlue,
-              ),
-            ),
+            Text(title, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, color: navyBlue)),
             const Spacer(),
             if (isSelected) Icon(Icons.check_circle, color: turquoise),
           ],
@@ -238,39 +290,23 @@ class _PaymentScreenState extends State<PaymentScreen> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        labelStyle: TextStyle(color: navyBlue.withOpacity(0.6)),
         filled: true,
         fillColor: lightPurple,
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey[200]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: turquoise),
-        ),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey[200]!)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: turquoise)),
       ),
     );
   }
 
   Widget _buildEWalletPrompt(String name) {
     return Container(
-      key: const ValueKey(1),
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: turquoise.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
+      decoration: BoxDecoration(color: turquoise.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
       child: Row(
         children: [
           Icon(Icons.qr_code_scanner, color: navyBlue),
           const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              "You will be redirected to the $name app to authorize the transaction.",
-              style: TextStyle(color: navyBlue, fontSize: 13),
-            ),
-          ),
+          Expanded(child: Text("You will be redirected to the $name app to authorize.", style: TextStyle(color: navyBlue, fontSize: 13))),
         ],
       ),
     );
@@ -278,19 +314,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Widget _buildBankDropdown() {
     return DropdownButtonFormField<String>(
-      key: const ValueKey(2),
-      decoration: InputDecoration(
-        filled: true,
-        fillColor: lightPurple,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-      ),
+      decoration: InputDecoration(filled: true, fillColor: lightPurple, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
       hint: const Text("Choose your FPX Bank"),
-      items: ["Maybank2u", "CIMB Clicks", "Public Bank", "RHB Now"]
-          .map((bank) => DropdownMenuItem(value: bank, child: Text(bank)))
-          .toList(),
+      items: ["Maybank2u", "CIMB Clicks", "Public Bank", "RHB Now"].map((bank) => DropdownMenuItem(value: bank, child: Text(bank))).toList(),
       onChanged: (val) {},
     );
   }
@@ -302,94 +328,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: TextStyle(color: textColor, fontSize: fontSize)),
-          Text(
-            value,
-            style: TextStyle(
-              color: turquoise, 
-              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-              fontSize: fontSize,
-            ),
-          ),
+          Text(value, style: TextStyle(color: turquoise, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, fontSize: fontSize)),
         ],
-      ),
-    );
-  }
-
-  Future<void> _handlePaymentProcess(double finalTotal) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
-
-    await Future.delayed(const Duration(seconds: 2));
-
-    try {
-      await FirebaseFirestore.instance.collection('Bookings').add({
-        ...widget.bookingData,
-        'totalAmount': finalTotal,
-        'paymentMethod': _selectedMethod == 0 ? "Card" : _selectedMethod == 1 ? "TNG" : "FPX",
-        'status': 'Paid & Confirmed',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      if (!mounted) return;
-      Navigator.pop(context);
-
-      _showSuccessDialog();
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e")),
-      );
-    }
-  }
-
-  void _showSuccessDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_circle_rounded, color: turquoise, size: 70),
-            const SizedBox(height: 20),
-            const Text(
-              "Payment Successful!",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              "Your booking is now confirmed.",
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () {
-                // Navigate to HomeScreen and remove all previous routes from the stack
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(builder: (context) => const HomeScreen()),
-                  (route) => false,
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: navyBlue,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 12),
-              ),
-              child: const Text(
-                "Back to Home",
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

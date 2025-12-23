@@ -41,7 +41,7 @@ class Island {
       state: data['state'] ?? '',
       priceMin: (data['priceMin'] ?? 0).toDouble(),
       priceMax: (data['priceMax'] ?? 0).toDouble(),
-      activitytype: List<String>.from(data['activityType'] ?? []), // FIXED
+      activitytype: List<String>.from(data['activitytype'] ?? []), // FIXED
       priceAdult: (data['priceAdult'] ?? 0).toDouble(), // Added mapping
       priceChild: (data['priceChild'] ?? 0).toDouble(), // Added mapping
     );
